@@ -6,6 +6,13 @@ M.config = {
     enable = true,
     delay = 300,
   },
+  format = {
+    enable = true,
+    on_save = false,
+  },
+  complete = {
+    enable = true,
+  },
 }
 
 function M.setup(opts)

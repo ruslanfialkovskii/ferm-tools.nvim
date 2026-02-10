@@ -1,6 +1,6 @@
 # ferm-tools.nvim
 
-Neovim plugin for [ferm](http://ferm.foo-projects.org/) firewall configuration — syntax highlighting, indentation, and folding.
+Neovim plugin for [ferm](http://ferm.foo-projects.org/) firewall configuration — syntax highlighting, indentation, folding, linting, formatting, and completion.
 
 ## Requirements
 
@@ -37,6 +37,13 @@ require('ferm-tools').setup({
     enable = true, -- enable inline diagnostics (linter)
     delay = 300,   -- debounce delay in ms before re-linting
   },
+  format = {
+    enable = true,  -- enable formatexpr (gq)
+    on_save = false, -- auto-format on save
+  },
+  complete = {
+    enable = true, -- enable omnifunc completion
+  },
 })
 ```
 
@@ -44,10 +51,67 @@ require('ferm-tools').setup({
 
 - **Syntax highlighting** — Lua-based highlighter using Neovim's extmarks API with treesitter highlight groups for universal colorscheme support
 - **Linter** — inline diagnostics via `vim.diagnostic` that catch configuration errors before deploying firewall rules
+- **Formatter** — normalize indentation, spacing, and blank lines in ferm configs
+- **Completion** — context-aware keyword completion via omnifunc and nvim-cmp
 - **Indentation** — automatic indent/dedent on `{` and `}`
 - **Folding** — optional `foldmethod=expr` based on brace nesting
 - **Filetype detection** — `*.ferm`, `ferm.conf`, `/etc/ferm/*`
 - **Comment support** — `commentstring` set for `gc` commenting via comment plugins
+
+### Formatter
+
+The formatter normalizes ferm configuration files:
+
+- Indentation using `shiftwidth` spaces per nesting level
+- Trailing whitespace removal
+- Single space between tokens (strings and comments preserved verbatim)
+- Blank line between top-level blocks (domain/table sections)
+- No multiple consecutive blank lines
+
+**Usage:**
+
+- `:FermFormat` — format the entire buffer
+- `:FermFormat` with visual selection — format selected range
+- `gq` — format via `formatexpr` (select lines, press `gq`)
+- Format-on-save: `setup({ format = { on_save = true } })`
+
+### Completion
+
+Context-aware keyword completion for ferm syntax. Works via two mechanisms:
+
+#### omnifunc (`<C-x><C-o>`)
+
+Built-in, zero-dependency completion. Enabled by default, works without any plugins.
+
+#### nvim-cmp source
+
+If [nvim-cmp](https://github.com/hrsh7th/nvim-cmp) is installed, a `ferm` source is registered automatically. Add it to your cmp sources:
+
+```lua
+sources = {
+  { name = 'ferm' },
+  -- ...other sources
+}
+```
+
+The source is inert on non-ferm buffers (`is_available()` checks filetype).
+
+**Context-aware completions:**
+
+| Context | Completions |
+|---------|-------------|
+| After `@` | Directives (`@def`, `@include`, ...) + built-in functions (`@eq`, `@resolve`, ...) |
+| After `$` | Built-in variables (`$DOMAIN`, `$TABLE`, ...) + user-defined variables from buffer |
+| After `&` | User-defined functions from buffer |
+| After `domain` | `ip`, `ip6`, `arp`, `eb` |
+| After `table` | `filter`, `nat`, `mangle`, `raw`, `security` |
+| After `chain` | `INPUT`, `OUTPUT`, `FORWARD`, `PREROUTING`, `POSTROUTING` |
+| After `policy` | `ACCEPT`, `DROP` |
+| After `mod`/`module` | Module names (conntrack, state, limit, ...) |
+| After `proto`/`protocol` | Protocol names (tcp, udp, icmp, ...) |
+| After `ctstate` | Conntrack states (NEW, ESTABLISHED, RELATED, ...) |
+| After `tcp-flags` | TCP flags (SYN, ACK, FIN, ...) |
+| Default | All keywords: location, match, targets, module params |
 
 ### Highlighted token types
 

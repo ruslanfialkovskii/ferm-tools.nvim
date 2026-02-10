@@ -270,6 +270,17 @@ local function collect_definitions(tokens)
           defs.vars[next_tok.value] = true
         elseif next_tok.type == 'function' then
           defs.funcs[next_tok.value] = true
+          -- Collect function parameters: @def &func($param1, $param2)
+          for j = i + 2, #tokens do
+            local t = tokens[j]
+            if t.type == 'variable' then
+              defs.vars[t.value] = true
+            elseif t.type == 'brace_open' or t.type == 'semicolon' then
+              break
+            elseif t.type == 'paren_close' then
+              break
+            end
+          end
         end
       end
     end

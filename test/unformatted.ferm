@@ -1,0 +1,64 @@
+# Unformatted ferm config for testing :FermFormat
+#
+# This file has intentionally messy formatting
+
+@def   $DEV_PRIVATE   =    eth0;
+@def $DEV_WORLD=eth1;
+  @def $NET_TRUSTED   =  192.168.1.0/24;
+
+domain    ip   table   filter   {
+chain   INPUT   {
+          policy   DROP;
+
+      # connection tracking
+    mod    conntrack    ctstate   (ESTABLISHED   RELATED)   ACCEPT;
+       mod   conntrack   ctstate   INVALID   DROP;
+
+         # loopback
+interface   lo   ACCEPT;
+
+   # SSH
+     proto   tcp   dport   22   saddr   $NET_TRUSTED   ACCEPT;
+ }
+
+
+   chain   OUTPUT   {
+      policy   ACCEPT;
+     }
+
+       chain   FORWARD   {
+  policy   DROP;
+      interface   $DEV_PRIVATE   outerface   $DEV_WORLD   ACCEPT;
+          mod   conntrack   ctstate   (ESTABLISHED   RELATED)   ACCEPT;
+    }
+}
+domain   ip   table   nat   {
+  chain   POSTROUTING   {
+         saddr   $NET_TRUSTED   outerface   $DEV_WORLD   MASQUERADE;
+    }
+
+   chain   PREROUTING    {
+      proto   tcp   dport   8080   DNAT   to-destination   192.168.1.10:80;
+        }
+}
+
+
+
+# Multiple blank lines above should be collapsed
+
+
+  @def   &my_rules($iface)   {
+     chain   INPUT   interface   $iface   {
+            mod   limit   limit   10/second   ACCEPT;
+    }
+  }
+
+  # Trailing whitespace on this line
+  domain   ip   table   filter   &my_rules(eth0);
+
+   # Comment with  extra   spaces preserved
+chain INPUT {
+proto tcp dport (80 443) ACCEPT;
+LOG log-prefix "DROPPED: " log-level warning;
+DROP;
+}

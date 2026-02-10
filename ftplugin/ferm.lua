@@ -11,3 +11,11 @@ if config.fold then
   vim.wo.foldexpr = "v:lua.require('ferm-tools.fold').get()"
   vim.wo.foldlevel = 99
 end
+
+if config.format.enable then
+  vim.bo.formatexpr = "v:lua.require('ferm-tools.format').formatexpr()"
+end
+
+if config.complete.enable then
+  vim.bo.omnifunc = "v:lua.require('ferm-tools.complete').omnifunc()"
+end
