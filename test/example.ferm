@@ -1,0 +1,106 @@
+# Ferm firewall configuration example
+# TODO: review rules before deploying
+
+@def $DEV_PRIVATE = eth0;
+@def $DEV_WORLD = eth1;
+@def $NET_TRUSTED = 192.168.1.0/24;
+@def $DNS_SERVERS = (8.8.8.8 8.8.4.4);
+
+@include '/etc/ferm/vars.conf';
+
+# Main filter table
+domain (ip ip6) table filter {
+    chain INPUT {
+        policy DROP;
+
+        # connection tracking
+        mod conntrack ctstate (ESTABLISHED RELATED) ACCEPT;
+        mod conntrack ctstate INVALID DROP;
+
+        # loopback
+        interface lo ACCEPT;
+
+        # ICMP
+        proto icmp mod limit limit 10/second limit-burst 50 ACCEPT;
+
+        # SSH from trusted
+        proto tcp dport 22 saddr $NET_TRUSTED ACCEPT;
+
+        # HTTP/HTTPS
+        proto tcp dport (80 443) ACCEPT;
+
+        # Log and drop everything else
+        mod limit limit 3/minute limit-burst 10 LOG log-prefix "INPUT-DROP: ";
+        DROP;
+    }
+
+    chain OUTPUT {
+        policy ACCEPT;
+    }
+
+    chain FORWARD {
+        policy DROP;
+
+        # Allow forwarding from private to world
+        interface $DEV_PRIVATE outerface $DEV_WORLD ACCEPT;
+
+        # Allow established back
+        mod conntrack ctstate (ESTABLISHED RELATED) ACCEPT;
+    }
+}
+
+# NAT
+domain ip table nat {
+    chain POSTROUTING {
+        saddr $NET_TRUSTED outerface $DEV_WORLD MASQUERADE;
+    }
+
+    chain PREROUTING {
+        # Port forwarding
+        proto tcp dport 8080 DNAT to-destination 192.168.1.10:80;
+    }
+}
+
+# Custom function
+@def &my_ssh_rules($iface, $port) {
+    chain INPUT interface $iface proto tcp dport $port {
+        mod conntrack ctstate NEW {
+            mod hashlimit
+                hashlimit-upto 3/minute
+                hashlimit-burst 5
+                hashlimit-name ssh_brute
+                hashlimit-mode srcip
+            ACCEPT;
+        }
+    }
+}
+
+# Use the function
+domain ip table filter &my_ssh_rules(eth0, 22);
+
+# Conditional
+@if @eq($DOMAIN, ip) {
+    table raw chain PREROUTING {
+        proto tcp dport 25 NOTRACK;
+    }
+}
+
+# Variables and backtick
+@def $MY_IP = `hostname -I | awk '{print $1}'`;
+@def $UPTIME = `uptime`;
+
+# Negation
+chain INPUT {
+    interface ! lo proto tcp dport ! 22 REJECT reject-with tcp-reset;
+}
+
+# Hex mark
+chain FORWARD {
+    mod mark mark 0x2a ACCEPT;
+}
+
+# IPv6 specific
+domain ip6 table filter chain INPUT {
+    proto icmpv6 ACCEPT;
+    saddr fe80::/10 ACCEPT;
+}
