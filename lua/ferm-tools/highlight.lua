@@ -162,14 +162,17 @@ local function highlight_line(bufnr, lnum, line)
 
   while pos <= len do
     -- Skip whitespace
-    local ws = line:match('^%s+', pos)
+    local ws = line:sub(pos):match('^%s+')
     if ws then
       pos = pos + #ws
       if pos > len then break end
     end
 
+    local tail = line:sub(pos)
+    local ch = line:sub(pos, pos)
+
     -- Comment: # to end of line
-    if line:sub(pos, pos) == '#' then
+    if ch == '#' then
       vim.api.nvim_buf_set_extmark(bufnr, ns, lnum, pos - 1, {
         end_col = len,
         hl_group = '@comment',
@@ -209,7 +212,7 @@ local function highlight_line(bufnr, lnum, line)
     end
 
     -- Single-quoted string
-    if line:sub(pos, pos) == "'" then
+    if ch == "'" then
       local end_pos = line:find("'", pos + 1, true)
       if end_pos then
         vim.api.nvim_buf_set_extmark(bufnr, ns, lnum, pos - 1, {
@@ -224,7 +227,7 @@ local function highlight_line(bufnr, lnum, line)
     end
 
     -- Double-quoted string
-    if line:sub(pos, pos) == '"' then
+    if ch == '"' then
       local end_pos = pos + 1
       while end_pos <= len do
         if line:sub(end_pos, end_pos) == '\\' then
@@ -248,7 +251,7 @@ local function highlight_line(bufnr, lnum, line)
     end
 
     -- Backtick command substitution
-    if line:sub(pos, pos) == '`' then
+    if ch == '`' then
       local end_pos = line:find('`', pos + 1, true)
       if end_pos then
         vim.api.nvim_buf_set_extmark(bufnr, ns, lnum, pos - 1, {
@@ -263,7 +266,7 @@ local function highlight_line(bufnr, lnum, line)
     end
 
     -- Variable $NAME
-    local var = line:match('^%$[A-Za-z_][A-Za-z0-9_]*', pos)
+    local var = tail:match('^%$[A-Za-z_][A-Za-z0-9_]*')
     if var then
       local hl = builtin_vars[var] and '@constant.builtin' or '@variable'
       vim.api.nvim_buf_set_extmark(bufnr, ns, lnum, pos - 1, {
@@ -277,7 +280,7 @@ local function highlight_line(bufnr, lnum, line)
     end
 
     -- User function &NAME
-    local func = line:match('^&[A-Za-z_][A-Za-z0-9_]*', pos)
+    local func = tail:match('^&[A-Za-z_][A-Za-z0-9_]*')
     if func then
       vim.api.nvim_buf_set_extmark(bufnr, ns, lnum, pos - 1, {
         end_col = pos - 1 + #func,
@@ -290,7 +293,7 @@ local function highlight_line(bufnr, lnum, line)
     end
 
     -- Directive or built-in function (@keyword)
-    local at_word = line:match('^@[A-Za-z_][A-Za-z0-9_]*', pos)
+    local at_word = tail:match('^@[A-Za-z_][A-Za-z0-9_]*')
     if at_word then
       local hl
       if directives[at_word] then
@@ -311,7 +314,7 @@ local function highlight_line(bufnr, lnum, line)
     end
 
     -- IPv4 address (must check before plain number)
-    local ipv4 = line:match('^%d+%.%d+%.%d+%.%d+/%d+', pos) or line:match('^%d+%.%d+%.%d+%.%d+', pos)
+    local ipv4 = tail:match('^%d+%.%d+%.%d+%.%d+/%d+') or tail:match('^%d+%.%d+%.%d+%.%d+')
     if ipv4 then
       vim.api.nvim_buf_set_extmark(bufnr, ns, lnum, pos - 1, {
         end_col = pos - 1 + #ipv4,
@@ -324,10 +327,10 @@ local function highlight_line(bufnr, lnum, line)
     end
 
     -- IPv6 address (simplified: starts with hex digits followed by colon)
-    local ipv6 = line:match('^[0-9a-fA-F:]+::[0-9a-fA-F:]*/%d+', pos)
-      or line:match('^[0-9a-fA-F:]+::[0-9a-fA-F:]*', pos)
-      or line:match('^[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F:]+/%d+', pos)
-      or line:match('^[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F:]+', pos)
+    local ipv6 = tail:match('^[0-9a-fA-F:]+::[0-9a-fA-F:]*/%d+')
+      or tail:match('^[0-9a-fA-F:]+::[0-9a-fA-F:]*')
+      or tail:match('^[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F:]+/%d+')
+      or tail:match('^[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F:]+')
     if ipv6 and ipv6:find(':') then
       -- Make sure it's a plausible IPv6 (at least 2 colons or ::)
       local _, colon_count = ipv6:gsub(':', ':')
@@ -344,7 +347,7 @@ local function highlight_line(bufnr, lnum, line)
     end
 
     -- Hex number
-    local hex = line:match('^0x[0-9a-fA-F]+', pos)
+    local hex = tail:match('^0x[0-9a-fA-F]+')
     if hex then
       vim.api.nvim_buf_set_extmark(bufnr, ns, lnum, pos - 1, {
         end_col = pos - 1 + #hex,
@@ -357,7 +360,7 @@ local function highlight_line(bufnr, lnum, line)
     end
 
     -- Word token (identifier-like, including hyphens for params like log-prefix)
-    local word = line:match('^[A-Za-z_][A-Za-z0-9_%-]*', pos)
+    local word = tail:match('^[A-Za-z_][A-Za-z0-9_%-]*')
     if word then
       local hl = nil
 
@@ -427,7 +430,7 @@ local function highlight_line(bufnr, lnum, line)
     end
 
     -- Decimal number (after word check to avoid matching parts of identifiers)
-    local num = line:match('^%d+', pos)
+    local num = tail:match('^%d+')
     if num then
       vim.api.nvim_buf_set_extmark(bufnr, ns, lnum, pos - 1, {
         end_col = pos - 1 + #num,
@@ -440,8 +443,6 @@ local function highlight_line(bufnr, lnum, line)
     end
 
     -- Single-char tokens
-    local ch = line:sub(pos, pos)
-
     if ch == '!' then
       vim.api.nvim_buf_set_extmark(bufnr, ns, lnum, pos - 1, {
         end_col = pos,
