@@ -9,5 +9,9 @@ vim.api.nvim_create_autocmd('FileType', {
   pattern = 'ferm',
   callback = function(ev)
     require('ferm-tools.highlight').attach(ev.buf)
+    local config = require('ferm-tools').config
+    if config.lint.enable then
+      require('ferm-tools.lint').attach(ev.buf)
+    end
   end,
 })

@@ -1,0 +1,88 @@
+# Test file with intentional errors for linter validation
+# Each section triggers a specific lint rule
+
+# Rule 1: unmatched-brace (extra closing brace)
+domain ip table filter {
+    chain INPUT {
+        policy DROP;
+    }
+}}
+
+# Rule 1: unmatched-brace (unclosed brace)
+domain ip table filter {
+    chain OUTPUT {
+        policy ACCEPT;
+
+# Rule 2: undefined-variable
+@def $KNOWN_VAR = 10.0.0.0/8;
+chain INPUT {
+    saddr $UNKNOWN_VAR DROP;
+    daddr $KNOWN_VAR ACCEPT;
+}
+
+# Rule 3: unknown-directive
+@bogus something;
+
+# Rule 4: invalid-table
+domain ip table foobar {
+}
+
+# Rule 5: invalid-domain
+domain ipx table filter {
+}
+
+# Rule 6: unknown-module
+chain INPUT {
+    mod fakemodulex ACCEPT;
+}
+
+# Rule 7: policy-on-custom-chain
+chain MY_CUSTOM_CHAIN {
+    policy ACCEPT;
+}
+
+# Rule 8: invalid-policy-value
+domain ip table filter {
+    chain INPUT {
+        policy REJECT;
+    }
+}
+
+# Rule 9: invalid-ipv4 (octet > 255)
+chain INPUT {
+    saddr 192.168.1.256/24 DROP;
+}
+
+# Rule 9: invalid-ipv4 (CIDR > 32)
+chain INPUT {
+    saddr 10.0.0.0/33 DROP;
+}
+
+# Rule 10: invalid-ipv6-cidr (prefix > 128)
+domain ip6 table filter chain INPUT {
+    saddr fe80::/200 DROP;
+}
+
+# Rule 11: unmatched-paren
+chain INPUT {
+    proto tcp dport (80 443 ACCEPT;
+}
+
+# Rule 12: unclosed-string
+@include '/etc/ferm/missing.conf;
+
+# Rule 13: unclosed-backtick
+@def $BROKEN = `hostname -I;
+
+# Rule 14: invalid-port
+chain INPUT {
+    proto tcp dport 99999 ACCEPT;
+}
+
+# Rule 15: duplicate-variable
+@def $KNOWN_VAR = 172.16.0.0/12;
+
+# Rule 16: missing-semicolon (target without ;)
+chain INPUT {
+    proto tcp dport 22 ACCEPT
+}

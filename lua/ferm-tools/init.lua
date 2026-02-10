@@ -2,6 +2,10 @@ local M = {}
 
 M.config = {
   fold = false,
+  lint = {
+    enable = true,
+    delay = 300,
+  },
 }
 
 function M.setup(opts)
