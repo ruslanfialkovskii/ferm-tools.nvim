@@ -1,19 +1,28 @@
 local M = {}
 
+local lexer = require('ferm-tools.lexer')
+
 function M.get()
   local lnum = vim.v.lnum
   local prev = vim.fn.prevnonblank(lnum - 1)
   if prev == 0 then return 0 end
 
-  local prev_line = vim.fn.getline(prev):gsub('#.*$', '')
-  local curr_line = vim.fn.getline(lnum):gsub('#.*$', '')
+  local prev_info = lexer.line_info(vim.fn.getline(prev))
+  local cur_info = lexer.line_info(vim.fn.getline(lnum))
+  local sw = vim.fn.shiftwidth()
   local ind = vim.fn.indent(prev)
 
-  if prev_line:match('{%s*$') then
-    ind = ind + vim.fn.shiftwidth()
+  -- A leading '}' already de-indented the previous line itself; it doesn't
+  -- reduce the indent of what follows ('} @else {' still opens a block).
+  local prev_delta = prev_info.delta
+  if prev_info.close_at_start then
+    prev_delta = prev_delta + 1
   end
-  if curr_line:match('^%s*}') then
-    ind = ind - vim.fn.shiftwidth()
+  if prev_delta > 0 then
+    ind = ind + sw * prev_delta
+  end
+  if cur_info.close_at_start then
+    ind = ind - sw
   end
 
   return math.max(ind, 0)

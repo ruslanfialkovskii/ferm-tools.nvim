@@ -21,7 +21,7 @@ vim.api.nvim_create_autocmd('FileType', {
 -- :FermFormat command
 vim.api.nvim_create_user_command('FermFormat', function(opts)
   local bufnr = vim.api.nvim_get_current_buf()
-  if opts.range == 2 then
+  if opts.range > 0 then
     require('ferm-tools.format').range(bufnr, opts.line1, opts.line2)
   else
     require('ferm-tools.format').buf(bufnr)

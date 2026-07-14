@@ -146,7 +146,7 @@ The linter runs automatically on ferm buffers and reports diagnostics inline. It
 | `unclosed-backtick` | ERROR | Backtick `` ` `` opened but never closed on the line |
 | `invalid-port` | ERROR | Port number > 65535 |
 | `duplicate-variable` | WARN | `@def $VAR` defined more than once |
-| `missing-semicolon` | WARN | Target (e.g. `ACCEPT`) at end of line without `;` |
+| `missing-semicolon` | WARN | Statement ending in a target (e.g. `ACCEPT`) or a `jump`/`goto` without `;` |
 
 Diagnostics can be inspected programmatically with `:lua vim.print(vim.diagnostic.get(0))`.
 

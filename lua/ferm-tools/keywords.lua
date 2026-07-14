@@ -41,8 +41,16 @@ M.module_names = {
   ttl = true, u32 = true, udp = true, unclean = true,
 }
 
+M.chain_commands = {
+  jump = true, ['goto'] = true, realgoto = true,
+}
+
 M.builtin_chains = {
   INPUT = true, OUTPUT = true, FORWARD = true, PREROUTING = true, POSTROUTING = true,
+}
+
+M.policy_values = {
+  ACCEPT = true, DROP = true,
 }
 
 M.tables_set = {
