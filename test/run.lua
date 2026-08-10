@@ -141,6 +141,34 @@ check('lint: missing semicolon after jump',
 check('lint: jump with semicolon ok',
   #lint_diags({ 'saddr 10.0.0.1 jump mychain;' }) == 0)
 
+-- IPv4 dotted-quad netmask (addr/255.255.255.255) is a single token and must
+-- not be misread as a /255 CIDR prefix.
+local nm_toks = require('ferm-tools.lexer').tokenize_line(0, 'saddr 10.20.20.20/255.255.255.255 ACCEPT;')
+local ipv4_tok
+for _, t in ipairs(nm_toks) do if t.type == 'ipv4' then ipv4_tok = t end end
+check('lexer: dotted-quad netmask is one ipv4 token',
+  ipv4_tok ~= nil and ipv4_tok.value == '10.20.20.20/255.255.255.255',
+  ipv4_tok and ipv4_tok.value or 'no ipv4 token')
+
+check('lint: dotted-quad netmask ok',
+  #lint_diags({ 'saddr 10.20.20.20/255.255.255.255 ACCEPT;' }) == 0)
+check('lint: short dotted netmask ok',
+  #lint_diags({ 'saddr 192.168.1.0/255.255.255.0 ACCEPT;' }) == 0)
+check('lint: valid CIDR prefix ok',
+  #lint_diags({ 'saddr 10.0.0.0/24 ACCEPT;' }) == 0)
+
+d = lint_diags({ 'saddr 10.0.0.0/33 ACCEPT;' })
+check('lint: CIDR prefix over 32 flagged',
+  #d == 1 and d[1].code == 'invalid-ipv4', vim.inspect(d))
+
+d = lint_diags({ 'saddr 10.0.0.300 ACCEPT;' })
+check('lint: octet over 255 flagged',
+  #d == 1 and d[1].code == 'invalid-ipv4', vim.inspect(d))
+
+d = lint_diags({ 'saddr 10.0.0.0/255.255.300.0 ACCEPT;' })
+check('lint: netmask octet over 255 flagged',
+  #d == 1 and d[1].code == 'invalid-ipv4', vim.inspect(d))
+
 ----------------------------------------------------------------------
 -- Highlighter
 ----------------------------------------------------------------------
