@@ -194,16 +194,25 @@ function M.tokenize(lines)
 end
 
 --- Structural summary of one line, for indent/fold/format.
+--- The `delta`/`close_at_start`/`open_at_end` fields track braces only, so
+--- indent and fold keep their existing behavior. Parenthesis structure is
+--- reported separately (`paren_delta`, `first_closes`) for the formatter,
+--- which indents multi-line paren lists the same way it indents brace blocks.
 ---@param line string
----@return table info { delta, close_at_start, open_at_end }
+---@return table info { delta, close_at_start, open_at_end, paren_delta, first_closes }
 function M.line_info(line)
   local delta = 0
+  local paren_delta = 0
   local first, last
   for _, tok in ipairs(M.tokenize_line(0, line)) do
     if tok.type == 'brace_open' then
       delta = delta + 1
     elseif tok.type == 'brace_close' then
       delta = delta - 1
+    elseif tok.type == 'paren_open' then
+      paren_delta = paren_delta + 1
+    elseif tok.type == 'paren_close' then
+      paren_delta = paren_delta - 1
     end
     if tok.type ~= 'comment' then
       first = first or tok
@@ -214,6 +223,8 @@ function M.line_info(line)
     delta = delta,
     close_at_start = first ~= nil and first.type == 'brace_close',
     open_at_end = last ~= nil and last.type == 'brace_open',
+    paren_delta = paren_delta,
+    first_closes = first ~= nil and (first.type == 'brace_close' or first.type == 'paren_close'),
   }
 end
 

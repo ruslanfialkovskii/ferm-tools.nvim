@@ -90,6 +90,185 @@ vim.cmd('normal! gqq')
 lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 check('gq: blank line preserved', #lines == 3 and lines[2] == '', vim.inspect(lines))
 
+-- 1-indexed column of a plain substring, or nil.
+local function col(s, sub)
+  return (s:find(sub, 1, true))
+end
+
+-- Multi-line paren lists indent one level and align trailing comments; a
+-- comment-less item (e.g. a variable) still counts toward the column width.
+out = fmt({
+  '@def $NETS = (',
+  '10.0.0.1 # a',
+  '10.0.0.100 # b',
+  '$OTHER',
+  ');',
+})
+check('format: paren list indent + comment align',
+  out[2] == '  10.0.0.1   # a' and out[3] == '  10.0.0.100 # b'
+    and out[4] == '  $OTHER' and out[5] == ');',
+  vim.inspect(out))
+check('format: paren list idempotent', vim.deep_equal(out, fmt(out)), vim.inspect(out))
+
+-- Rule runs align into columns; a rule without dport reserves the middle
+-- column so the target and comment stay aligned.
+-- A trailing column the shorter rule never reaches is NOT reserved: `daddr X
+-- ACCEPT` stays compact instead of being stretched by a sibling's `dport`.
+out = fmt({
+  'chain OUTPUT {',
+  'daddr 10.0.0.1 dport (80 443) ACCEPT; # web',
+  'daddr 10.0.0.2 ACCEPT; # any',
+  '}',
+})
+check('format: trailing unused column not reserved (short rule compact)',
+  out[2] == '  daddr 10.0.0.1 dport (80 443) ACCEPT; # web'
+    and out[3] == '  daddr 10.0.0.2 ACCEPT; # any',
+  vim.inspect(out))
+check('format: rule align idempotent', vim.deep_equal(out, fmt(out)), vim.inspect(out))
+
+-- Alignment is positional, so each line keeps its own keyword order (daddr and
+-- proto are not reordered into fixed keyword columns).
+out = fmt({
+  'interface eth0 daddr 10.0.0.1 proto tcp ACCEPT; # a',
+  'interface eth0 proto tcp daddr 10.0.0.2 ACCEPT; # b',
+})
+check('format: align preserves keyword order',
+  col(out[1], 'daddr') < col(out[1], 'proto')
+    and col(out[2], 'proto') < col(out[2], 'daddr'),
+  vim.inspect(out))
+
+-- Balanced braces within a statement (Jinja/Ansible templating) do not stop a
+-- line from being treated as an alignable rule.
+out = fmt({
+  'interface {{ x }} daddr 10.0.0.1 ACCEPT; # a',
+  'interface {{ x }} daddr 10.0.0.100 ACCEPT; # b',
+})
+check('format: balanced braces still align',
+  col(out[1], '#') ~= nil and col(out[1], '#') == col(out[2], '#')
+    and out[1]:find('{{ x }}', 1, true) ~= nil,
+  vim.inspect(out))
+
+-- A paren list nested in a brace block uses combined brace+paren depth, and
+-- the ") TARGET;" closer de-indents to the opener's level.
+out = fmt({
+  '@def &f($s) = {',
+  'interface $s daddr (',
+  '10.0.0.1 # a',
+  '10.0.0.100 # b',
+  ') ACCEPT;',
+  '}',
+})
+check('format: nested paren depth + closer dedent',
+  out[2] == '  interface $s daddr (' and out[3] == '    10.0.0.1   # a'
+    and out[4] == '    10.0.0.100 # b' and out[5] == '  ) ACCEPT;' and out[6] == '}',
+  vim.inspect(out))
+
+-- Rules with different leading keywords are not a column group: each is left
+-- with single-space normalization, not aligned to the other.
+out = fmt({
+  'chain OUTPUT {',
+  'saddr 10.0.0.1 ACCEPT;',
+  'daddr 10.0.0.2 dport 22 ACCEPT;',
+  '}',
+})
+check('format: differing first keyword not grouped',
+  out[2] == '  saddr 10.0.0.1 ACCEPT;'
+    and out[3] == '  daddr 10.0.0.2 dport 22 ACCEPT;',
+  vim.inspect(out))
+
+-- Different targets still align comments (the target column is padded).
+out = fmt({
+  'chain OUTPUT {',
+  'daddr 10.0.0.1 ACCEPT; # a',
+  'daddr 10.0.0.100 DROP; # b',
+  '}',
+})
+check('format: mixed targets keep comments aligned',
+  col(out[2], '#') == col(out[3], '#') and col(out[2], 'ACCEPT;') == col(out[3], 'DROP;'),
+  vim.inspect(out))
+
+-- A keyword present in only some rules (dport) gets its own column, which the
+-- other rules leave blank, so the following keyword and the target stay aligned
+-- instead of shifting into the gap. Keyword order within each line is kept.
+out = fmt({
+  'saddr 10.0.0.1 {',
+  "daddr 10.1.1.1 protocol tcp mod comment comment 'a' ACCEPT;",
+  "daddr 10.1.1.2 protocol tcp dport 8050 mod comment comment 'b' ACCEPT;",
+  '}',
+})
+check('format: optional middle keyword reserves its column',
+  col(out[2], 'mod comment') == col(out[3], 'mod comment')
+    and col(out[2], 'ACCEPT;') == col(out[3], 'ACCEPT;')
+    and out[3]:find('dport 8050', 1, true) ~= nil,
+  vim.inspect(out))
+check('format: supersequence align idempotent', vim.deep_equal(out, fmt(out)), vim.inspect(out))
+
+-- proto and protocol are synonyms: they share one alignment column, so the
+-- following columns stay aligned even when the group mixes both spellings.
+out = fmt({
+  'chain OUTPUT {',
+  'daddr 10.0.0.1 proto tcp dport 22 ACCEPT;',
+  'daddr 10.0.0.2 protocol tcp ACCEPT;',
+  '}',
+})
+check('format: proto/protocol share a column',
+  col(out[2], 'proto') == col(out[3], 'proto')
+    and out[3] == '  daddr 10.0.0.2 protocol tcp ACCEPT;',
+  vim.inspect(out))
+
+-- Within a column the keyword and its value align in separate sub-columns, so
+-- proto/protocol (different lengths) line up and their values still align.
+out = fmt({
+  'chain OUTPUT {',
+  'daddr 10.3.3.1 proto tcp dport 22 ACCEPT;',
+  'daddr 10.3.3.2 protocol tcp ACCEPT;',
+  'daddr 10.3.3.3 proto udp dport 22 ACCEPT;',
+  'daddr 10.3.3.4 protocol icmp ACCEPT;',
+  '}',
+})
+check('format: keyword and value align in separate sub-columns',
+  out[2] == '  daddr 10.3.3.1 proto    tcp  dport 22 ACCEPT;'
+    and out[3] == '  daddr 10.3.3.2 protocol tcp  ACCEPT;'
+    and out[4] == '  daddr 10.3.3.3 proto    udp  dport 22 ACCEPT;'
+    and out[5] == '  daddr 10.3.3.4 protocol icmp ACCEPT;',
+  vim.inspect(out))
+
+-- Mixed rule shapes in one group. A keyword used by only some rules (`mod`)
+-- keeps its natural place after `dport` (look-ahead column insertion, not
+-- wedged in early), so in the full rule proto < dport < mod. A daddr-only rule
+-- stays compact; a `mod` rule reserves the empty proto/dport columns (they are
+-- middle gaps) so its comment lines up with the full rules.
+out = fmt({
+  'saddr 10.0.0.1 {',
+  'daddr 10.1.1.1 ACCEPT;',
+  'daddr 10.1.1.2 proto tcp dport 22 ACCEPT;',
+  "daddr 10.1.1.3 mod comment comment 'x' ACCEPT;",
+  "daddr 10.1.1.4 proto tcp dport 80 mod comment comment 'y' ACCEPT;",
+  '}',
+})
+check('format: look-ahead columns; short rule compact, mod aligned',
+  col(out[5], 'proto') < col(out[5], 'dport') and col(out[5], 'dport') < col(out[5], 'mod')
+    and out[2] == '  daddr 10.1.1.1 ACCEPT;'
+    and out[3]:find('mod', 1, true) == nil
+    and col(out[4], 'mod comment') == col(out[5], 'mod comment'),
+  vim.inspect(out))
+check('format: mixed shapes idempotent', vim.deep_equal(out, fmt(out)), vim.inspect(out))
+
+-- Two different mod modules form separate columns (keyed by module name), so a
+-- rule with only `mod comment` reserves the `mod multiport` column and its
+-- comment still lines up with the fuller rules.
+out = fmt({
+  'saddr 10.0.0.1 {',
+  "daddr 10.1.1.1 proto tcp mod multiport destination-ports (80 443) mod comment comment 'a' ACCEPT;",
+  "daddr 10.1.1.2 proto tcp mod comment comment 'b' ACCEPT;",
+  '}',
+})
+check('format: mod modules keyed separately (multiport vs comment)',
+  out[3]:find('multiport', 1, true) == nil
+    and col(out[2], 'mod comment') == col(out[3], 'mod comment')
+    and col(out[2], 'ACCEPT;') == col(out[3], 'ACCEPT;'),
+  vim.inspect(out))
+
 ----------------------------------------------------------------------
 -- Linter
 ----------------------------------------------------------------------
@@ -239,6 +418,38 @@ vim.cmd('enew')
 check('ftplugin: fold options do not leak across buffers',
   in_ferm == 'expr' and vim.wo.foldmethod ~= 'expr',
   string.format('%s then %s', in_ferm, vim.wo.foldmethod))
+
+-- Indent tracks parens like braces: a multi-line paren list nested in a brace
+-- block indents one level, and the ") TARGET;" closer de-indents.
+buf = new_buf({
+  '@def &f($s) = {',
+  'interface $s daddr (',
+  '10.0.0.1',
+  '10.0.0.100',
+  ') ACCEPT;',
+  '}',
+})
+vim.api.nvim_set_current_buf(buf)
+vim.bo[buf].filetype = 'ferm'
+vim.bo[buf].shiftwidth = 2
+for i = 2, 6 do
+  vim.cmd(i .. 'normal! ==')
+end
+indents = {}
+for i = 1, 6 do
+  indents[i] = vim.fn.indent(i)
+end
+check('indent: multi-line paren list indents like a block',
+  vim.deep_equal(indents, { 0, 2, 4, 4, 2, 0 }), vim.inspect(indents))
+
+-- Fold treats a multi-line paren list as a foldable block.
+buf = new_buf({ '@def $NETS = (', '10.0.0.1', '10.0.0.100', ');' })
+vim.api.nvim_set_current_buf(buf)
+vim.bo[buf].filetype = 'ferm'
+require('ferm-tools').setup({ fold = true })
+check('fold: multi-line paren list is foldable',
+  vim.fn.foldlevel(1) == 1 and vim.fn.foldlevel(2) == 1 and vim.fn.foldlevel(3) == 1,
+  string.format('%d %d %d', vim.fn.foldlevel(1), vim.fn.foldlevel(2), vim.fn.foldlevel(3)))
 
 ----------------------------------------------------------------------
 -- Completion
