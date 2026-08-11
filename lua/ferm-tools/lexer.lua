@@ -120,8 +120,12 @@ function M.tokenize_line(lnum, line)
       goto continue
     end
 
-    -- IPv4 address (must check before plain number)
-    local ipv4 = line:match('^%d+%.%d+%.%d+%.%d+/%d+', pos) or line:match('^%d+%.%d+%.%d+%.%d+', pos)
+    -- IPv4 address (must check before plain number). The dotted-quad netmask
+    -- form (addr/255.255.255.0) is matched before the /prefix form so the
+    -- whole mask becomes one token rather than a bogus /255 CIDR prefix.
+    local ipv4 = line:match('^%d+%.%d+%.%d+%.%d+/%d+%.%d+%.%d+%.%d+', pos)
+      or line:match('^%d+%.%d+%.%d+%.%d+/%d+', pos)
+      or line:match('^%d+%.%d+%.%d+%.%d+', pos)
     if ipv4 then
       push('ipv4', ipv4, pos - 1 + #ipv4)
       pos = pos + #ipv4
