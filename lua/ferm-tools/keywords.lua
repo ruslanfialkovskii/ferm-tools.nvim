@@ -24,6 +24,14 @@ M.match_keywords = {
   ['if'] = true,
 }
 
+-- Synonym keywords that should share one alignment column. Maps each alias to a
+-- canonical name; keywords absent here are their own canonical form. Only the
+-- column identity is affected — the cell text is kept verbatim. (Add `module =
+-- 'mod'` here to fold mod/module the same way.)
+M.keyword_aliases = {
+  protocol = 'proto',
+}
+
 M.module_names = {
   account = true, addrtype = true, ah = true, bpf = true, cgroup = true,
   cluster = true, comment = true, connbytes = true, connlabel = true,
